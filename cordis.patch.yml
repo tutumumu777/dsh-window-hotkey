@@ -3,5 +3,8 @@
       name: '@local/dsh-window-hotkey'
       config:
         enabled: true
-        hotkey: ctrl+alt+q
+        hotkey: alt+shift+i
         windowTitle: DeepSeek Harness
+        # tray: hide the window to the system tray (taskbar button disappears)
+        # taskbar: minimize to the taskbar (upstream default)
+        minimizeTo: tray

@@ -27,7 +27,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_LOG, logSize, parseHotkey, readNewLines, record, startHelper } from './hotkey.js'
 
-const DEFAULT_HOTKEY = 'ctrl+alt+q'
+const DEFAULT_HOTKEY = 'alt+shift+i'
 /**
  * What the panel shows when our command has no override: it comes from the
  * `defaults['desktop:windows']` declared in client.js, NOT from config.hotkey.
@@ -36,6 +36,8 @@ const DEFAULT_HOTKEY = 'ctrl+alt+q'
  */
 const PANEL_DEFAULT_HOTKEY = DEFAULT_HOTKEY
 const DEFAULT_WINDOW_TITLE = 'DeepSeek Harness'
+/** Which chrome the hotkey collapses to when the window is in front. */
+const DEFAULT_MINIMIZE_TO = 'taskbar'
 const STATE_FILE = join(dirname(fileURLToPath(import.meta.url)), 'hotkey-state.json')
 const ROUTE = '/dsh-window-hotkey'
 /** How long a freshly spawned helper gets to win RegisterHotKey. */
@@ -164,8 +166,10 @@ export function apply(ctx, config = {}) {
   if (config.enabled === false) return
 
   const windowTitle = text(config.windowTitle, DEFAULT_WINDOW_TITLE)
+  // "tray" hides the window to the system tray; "taskbar" (default) minimizes it.
+  const minimizeTo = text(config.minimizeTo, DEFAULT_MINIMIZE_TO).toLowerCase() === 'tray' ? 'tray' : 'taskbar'
   // hotkey.js spawns cfg.powershell verbatim; it has no default of its own.
-  const cfg = { powershell: 'powershell.exe', windowTitle, logFile: DEFAULT_LOG }
+  const cfg = { powershell: 'powershell.exe', windowTitle, logFile: DEFAULT_LOG, minimizeTo }
 
   const stored = readState()
   let current = null // { combo, handle, text }

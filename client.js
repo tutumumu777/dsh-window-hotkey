@@ -51,7 +51,7 @@ window.__ModuleLoader__.load({
               label,
               aliases: ['window toggle', 'toggle window', '窗口快捷键', '热键', '开关窗口'],
               defaults: {
-                'desktop:windows': { code: 'KeyQ', modifiers: ['primary', 'alt'] },
+                'desktop:windows': { code: 'KeyI', modifiers: ['alt', 'shift'] },
               },
               regions: ['page', 'editable', 'terminal'],
               modals: ['settings', 'shortcuts'],

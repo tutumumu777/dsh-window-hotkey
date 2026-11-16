@@ -3,6 +3,38 @@
 用全局快捷键开关 DeepSeek Harness 窗口（默认 `Ctrl+Alt+Q`），无论应用是否在前台；窗口已显示但被别的窗口盖住时，按热键会先置顶到前台，而不是直接最小化。
 **改键直接在「通用设置 → 通用快捷键」里改，改完立刻生效。**
 
+> **本 fork 的差异**：新增 `minimizeTo` 配置，可让热键把窗口**收进系统托盘**（任务栏按钮消失），而不是只最小化到任务栏。默认键改为 `Alt+Shift+I`。详见下方「收起方式：任务栏 vs 托盘」。
+
+## 收起方式：任务栏 vs 托盘
+
+`cordis.patch.yml` 里：
+
+```yaml
+config:
+  enabled: true
+  hotkey: alt+shift+i
+  windowTitle: DeepSeek Harness
+  # tray: 收进系统托盘（任务栏按钮消失，托盘图标常驻）
+  # taskbar: 最小化到任务栏（上游默认行为）
+  minimizeTo: tray
+```
+
+| 取值 | 行为 | 日志 |
+| --- | --- | --- |
+| `taskbar`（缺省） | `SC_MINIMIZE`，窗口留在任务栏 | `minimize ... iconic=True` |
+| `tray` | `ShowWindow(SW_HIDE)`，任务栏按钮消失 | `hide-to-tray ... hidden=True` |
+
+`tray` 分支之所以安全，是因为**收起之后仍然走原有的 `WakeViaSecondInstance` 唤醒路径**：
+`second-instance` → `focusPrimaryWindow()` → Electron 自己的 `window.show()`。渲染进程是真被唤醒的，
+不会出现"画面完整但点哪都没反应"的静态死页面。（那个问题是"用 `ShowWindow` 去**唤醒**"才有的；
+"用 `SW_HIDE` 去**收起**"不受影响，已实测。）
+
+实测（DSH Desktop 0.2.2-rc.3 / Windows 11）：`hide-to-tray hidden=True` 后按热键，
+**261ms** 内唤回且 `woken=True`。
+
+`SW_HIDE` 不经过 DSH 的 `close` 流程，因此不会弹一次性的「可在系统托盘重新打开」提示，
+也不写 `background-close-confirmed` 标记 —— 热键收起不该弹对话框。
+
 ## 两个半边
 
 | 半边 | 文件 | 作用 |
@@ -70,27 +102,32 @@ Chromium 的输入路由没被唤醒 —— 画面完整但点哪都没反应（
 ```yaml
 config:
   enabled: true
-  hotkey: ctrl+alt+q
+  hotkey: alt+shift+i
   windowTitle: DeepSeek Harness
+  minimizeTo: tray
 ```
 
 - `enabled` — `false` 时完全不加载 helper。
 - `hotkey` — 首次启动用的组合（`ctrl` / `alt` / `shift` / `win` 加一个主键：字母、数字、`F1`–`F24` 或具名键）。
   一旦在面板里改过，以 `hotkey-state.json` 为准。
 - `windowTitle` — 按标题**后缀**匹配窗口；应用标题形如 `会话名 — DeepSeek Harness`，后缀匹配能命中。
+- `minimizeTo` — `tray` 收进系统托盘，`taskbar`（缺省）最小化到任务栏。非法值按 `taskbar` 处理。
 
 ## 排障
 
 `%LOCALAPPDATA%\Temp\dsh-hotkey\hotkey.log` 记录每次注册与开关：
 
 ```
-[plugin] helper started pid=21184 hotkey=Ctrl+Alt+E
-registered mods=0x3 vk=0x45 id=1
-minimize hwnd=0x00040532 sent=True iconic=True
+[plugin] helper started pid=21184 hotkey=Alt+Shift+I
+helper start pid=21184 parent=4184 thread=3180 minimizeTo=tray
+registered mods=0x5 vk=0x49 id=1
+hide-to-tray hwnd=0x00040532 hidden=True visible=False
 focus (was behind) hwnd=0x00040532 fg=0x00040816 fronted=True title="DeepSeek Harness"
 restore (was hidden) hwnd=0x00040532 woken=True
+minimize hwnd=0x00040532 sent=True iconic=True
 ```
 
 `registered mods=… vk=…` 出现 = 热键真的拿到手了；`register failed after … error=1409` = 被别的程序占着。
+`minimizeTo=tray` 出现在 `helper start` 那行，说明配置已生效；收起时看 `hide-to-tray … hidden=True`。
 
 `resolve()` 故意是空操作：窗口获得焦点时系统已经把按键交给了 helper，应用内再执行一次会连开关两下。

@@ -226,6 +226,7 @@ public class DshHotkeyHelper
         public int ptY;
     }
 
+    const int SW_HIDE = 0;
     const int SW_SHOW = 5;
     const int SW_MINIMIZE = 6;
     const int SW_RESTORE = 9;
@@ -237,6 +238,8 @@ public class DshHotkeyHelper
 
     static string logPath = "";
     static string suffix = "";
+    /// <summary>"tray" hides the window; anything else minimizes it to the taskbar.</summary>
+    static string minimizeTo = "taskbar";
 
     static void Log(string message)
     {
@@ -501,6 +504,25 @@ public class DshHotkeyHelper
             Log("focus (was behind) hwnd=0x" + hWnd.ToInt64().ToString("X8") + " fg=0x" + foreground.ToInt64().ToString("X8") + " fronted=" + fronted + " title=\\"" + title + "\\"");
             return;
         }
+        if (minimizeTo == "tray")
+        {
+            // Electron's window.hide() equivalent: the window leaves the taskbar
+            // while the tray icon stays. A raw ShowWindow(SW_HIDE) is safe here
+            // ONLY because coming back goes through WakeViaSecondInstance ->
+            // second-instance -> focusPrimaryWindow() -> Electron's own
+            // window.show(), which is what actually wakes the renderer. (Waking
+            // with ShowWindow alone would paint a frozen, unclickable frame.)
+            bool hidden = ShowWindow(hWnd, SW_HIDE);
+            if (!hidden)
+            {
+                // Fall back to the taskbar path rather than silently doing nothing.
+                bool fb = SysCommand(hWnd, SC_MINIMIZE);
+                if (!fb) { try { ShowWindow(hWnd, SW_MINIMIZE); } catch { } }
+            }
+            Thread.Sleep(30);
+            Log("hide-to-tray hwnd=0x" + hWnd.ToInt64().ToString("X8") + " hidden=" + hidden + " visible=" + IsWindowVisible(hWnd) + " title=\\"" + title + "\\"");
+            return;
+        }
         bool handed = SysCommand(hWnd, SC_MINIMIZE);
         if (!handed)
         {
@@ -558,13 +580,14 @@ public class DshHotkeyHelper
 
     static int HotkeyId = 1;
 
-    public static int Run(uint mods, uint vk, string titleSuffix, string logFile, int parentPid, int registerTimeoutMs, int hotkeyId)
+    public static int Run(uint mods, uint vk, string titleSuffix, string logFile, int parentPid, int registerTimeoutMs, int hotkeyId, string minimizeToMode)
     {
         HotkeyId = hotkeyId;
         suffix = titleSuffix;
         logPath = logFile;
+        minimizeTo = (minimizeToMode ?? "taskbar");
 
-        Log("helper start pid=" + Process.GetCurrentProcess().Id + " parent=" + parentPid + " thread=" + GetCurrentThreadId());
+        Log("helper start pid=" + Process.GetCurrentProcess().Id + " parent=" + parentPid + " thread=" + GetCurrentThreadId() + " minimizeTo=" + minimizeTo);
 
         int waited = 0;
         bool registered = false;
@@ -631,14 +654,17 @@ export function buildHelperScript(cfg, combo, options = {}) {
   const hotkeyId = 1
   const titleSuffix = String(cfg.windowTitle ?? 'DeepSeek Harness').trim()
   const logFile = cfg.logFile ?? DEFAULT_LOG
+  // "tray" hides the window to the tray; anything else keeps the taskbar behavior.
+  const minimizeTo = String(cfg.minimizeTo ?? 'taskbar').trim().toLowerCase() === 'tray' ? 'tray' : 'taskbar'
   const csharp = CSHARP
   const lines = ["$ErrorActionPreference='Stop'"]
   lines.push(`$log=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64utf8(logFile)}'))`)
   lines.push(`$suffix=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64utf8(titleSuffix)}'))`)
+  lines.push(`$minimizeTo=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64utf8(minimizeTo)}'))`)
   lines.push("Add-Type -TypeDefinition @'")
   lines.push(csharp)
   lines.push("'@")
-  lines.push(`$code=[DshHotkeyHelper]::Run(${combo.mods}, ${combo.vk}, $suffix, $log, ${parentPid}, ${registerTimeoutMs}, ${hotkeyId})`)
+  lines.push(`$code=[DshHotkeyHelper]::Run(${combo.mods}, ${combo.vk}, $suffix, $log, ${parentPid}, ${registerTimeoutMs}, ${hotkeyId}, $minimizeTo)`)
   lines.push('exit $code')
   return lines.join('\n')
 }
